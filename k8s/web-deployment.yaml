@@ -18,4 +18,3 @@ spec:
         - image: bootdotdev/synergychat-web:latest
           name: synergychat-web
           resources: {}
-
