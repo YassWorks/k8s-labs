@@ -1,0 +1,10 @@
+# cp terraform.tfvars.example terraform.tfvars, then edit.
+
+# Required. Your public IP: curl -s https://checkip.amazonaws.com
+allowed_cidr = "..."
+
+# node_count    = 3
+# node_prefix   = "dev"
+# region        = "eu-north-1"
+# instance_type = "m7i-flex.large"
+# volume_size   = 30
