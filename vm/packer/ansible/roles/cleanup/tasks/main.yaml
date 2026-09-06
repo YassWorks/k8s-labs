@@ -1,0 +1,76 @@
+---
+# AMI hygiene. Strips everything that identifies THIS builder instance so the
+# image is a blank mould rather than a clone. Must run last in the playbook.
+#
+# Skipping this is the classic baked-AMI mistake: every node ends up sharing a
+# machine-id (duplicate DHCP leases, systemd oddities) and, worse, identical
+# SSH host keys, so your client cannot tell one box from another.
+
+# --- Machine identity ---
+# The file must exist and be EMPTY: systemd regenerates it on next boot.
+# Deleting it outright makes systemd unhappy instead.
+- name: Blank the machine-id
+  ansible.builtin.copy:
+    dest: /etc/machine-id
+    content: ""
+    mode: "0444"
+
+- name: Remove the dbus machine-id
+  ansible.builtin.file:
+    path: /var/lib/dbus/machine-id
+    state: absent
+
+# --- SSH host keys (cloud-init regenerates unique ones on first boot) ---
+- name: Find baked SSH host keys
+  ansible.builtin.find:
+    paths: /etc/ssh
+    patterns: "ssh_host_*"
+  register: host_keys
+
+- name: Remove SSH host keys
+  ansible.builtin.file:
+    path: "{{ item.path }}"
+    state: absent
+  loop: "{{ host_keys.files }}"
+  loop_control:
+    label: "{{ item.path }}"
+
+# --- cloud-init: force a full first-boot run on every new instance ---
+- name: Reset cloud-init state
+  ansible.builtin.command: cloud-init clean --logs --seed
+  changed_when: true
+
+# --- Package and log cruft ---
+- name: Clean the apt cache
+  ansible.builtin.command: apt-get clean
+  changed_when: true
+
+- name: Drop apt package lists
+  ansible.builtin.shell: rm -rf /var/lib/apt/lists/*
+  changed_when: true
+
+# Truncate rather than delete: running daemons still hold these file handles.
+- name: Truncate logs
+  ansible.builtin.shell: find /var/log -type f -exec truncate -s 0 {} +
+  changed_when: true
+
+- name: Clear shell history
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /home/ubuntu/.bash_history
+    - /root/.bash_history
+
+# --- Packer's temporary keypair ---
+# Packer deletes the key from AWS but leaves the public half in authorized_keys,
+# which would otherwise be baked into the image. Safe to remove mid-session:
+# sshd does not re-read authorized_keys for an already-open connection, and the
+# cloud-init reset above means the launch keypair is installed on first boot.
+- name: Remove baked authorized_keys
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - /home/ubuntu/.ssh/authorized_keys
+    - /root/.ssh/authorized_keys

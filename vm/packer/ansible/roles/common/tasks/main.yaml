@@ -1,0 +1,160 @@
+---
+# Shared tooling for the devstation image. Bake it in so first boot is instant
+# and no heavy install happens while you're waiting to get work done.
+
+- name: Wait for any boot-time apt lock to clear
+  ansible.builtin.shell: while fuser /var/lib/dpkg/lock-frontend >/dev/null 2>&1; do sleep 2; done
+  changed_when: false
+
+- name: Update apt cache
+  ansible.builtin.apt:
+    update_cache: true
+    cache_valid_time: 3600
+
+- name: Install base packages
+  ansible.builtin.apt:
+    name:
+      - build-essential
+      - ca-certificates
+      - curl
+      - git
+      - gnupg
+      - htop
+      - jq
+      - ncdu
+      - python3-pip
+      - rsync
+      - tmux
+      - tree
+      - unzip
+      - vim
+      - wget
+    state: present
+
+# --- Docker (the one heavyweight worth baking; useful on any dev box) ---
+# Note: `apt_key` is deprecated on 24.04. Use the keyring + signed-by pattern.
+- name: Create apt keyring directory
+  ansible.builtin.file:
+    path: /etc/apt/keyrings
+    state: directory
+    mode: "0755"
+
+- name: Add Docker GPG key
+  ansible.builtin.get_url:
+    url: https://download.docker.com/linux/ubuntu/gpg
+    dest: /etc/apt/keyrings/docker.asc
+    mode: "0644"
+
+- name: Add Docker apt repo
+  ansible.builtin.apt_repository:
+    repo: "deb [arch=amd64 signed-by=/etc/apt/keyrings/docker.asc] https://download.docker.com/linux/ubuntu noble stable"
+    state: present
+    filename: docker
+
+- name: Install Docker engine
+  ansible.builtin.apt:
+    name:
+      - docker-ce
+      - docker-ce-cli
+      - containerd.io
+      - docker-buildx-plugin
+      - docker-compose-plugin
+    state: present
+    update_cache: true
+
+- name: Enable Docker
+  ansible.builtin.systemd:
+    name: docker
+    enabled: true
+    state: started
+
+- name: Add ubuntu user to docker group
+  ansible.builtin.user:
+    name: ubuntu
+    groups: docker
+    append: true
+
+# --- uv (fast Python/venv manager; fetches any Python on demand) ---
+- name: Install uv for the ubuntu user
+  ansible.builtin.shell: curl -LsSf https://astral.sh/uv/install.sh | sh
+  args:
+    creates: /home/ubuntu/.local/bin/uv
+  become: true
+  become_user: ubuntu
+
+# --- Time (clock drift is miserable to diagnose once you issue certificates) ---
+- name: Set timezone to UTC
+  ansible.builtin.command: timedatectl set-timezone UTC
+  changed_when: false
+
+# Ubuntu's AWS images use chrony against the Amazon Time Sync Service, not
+# systemd-timesyncd. Installing is a no-op when it is already present.
+- name: Install chrony
+  ansible.builtin.apt:
+    name: chrony
+    state: present
+
+- name: Enable time sync
+  ansible.builtin.systemd:
+    name: chrony
+    enabled: true
+    state: started
+
+# --- Unattended upgrades: off ---
+# It takes the dpkg lock at unpredictable moments and will fight the first
+# `apt install` you run on a fresh node.
+- name: Stop and disable unattended-upgrades
+  ansible.builtin.systemd:
+    name: unattended-upgrades
+    enabled: false
+    state: stopped
+  failed_when: false
+
+- name: Mask the apt-daily timers
+  ansible.builtin.systemd:
+    name: "{{ item }}"
+    enabled: false
+    masked: true
+    state: stopped
+  loop:
+    - apt-daily.timer
+    - apt-daily-upgrade.timer
+  failed_when: false
+
+- name: Turn off APT periodic behaviour
+  ansible.builtin.copy:
+    dest: /etc/apt/apt.conf.d/20auto-upgrades
+    content: |
+      APT::Periodic::Update-Package-Lists "0";
+      APT::Periodic::Unattended-Upgrade "0";
+    mode: "0644"
+
+# --- Login banner: only ours, none of Ubuntu's dynamic sprawl ---
+- name: Disable Ubuntu dynamic MOTD scripts
+  ansible.builtin.shell: chmod -x /etc/update-motd.d/* || true
+  changed_when: false
+
+- name: Disable motd-news
+  ansible.builtin.systemd:
+    name: motd-news.timer
+    enabled: false
+    state: stopped
+  failed_when: false
+
+- name: Empty the static motd
+  ansible.builtin.copy:
+    dest: /etc/motd
+    content: ""
+    mode: "0644"
+
+- name: Install the devstation banner
+  ansible.builtin.copy:
+    src: 00-devstation
+    dest: /etc/update-motd.d/00-devstation
+    mode: "0755"
+
+- name: Suppress the "Last login" line on SSH
+  ansible.builtin.lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: '^#?PrintLastLog'
+    line: "PrintLastLog no"

@@ -1,0 +1,11 @@
+---
+# Devstation image config. `cleanup` MUST stay last: it strips the per-machine
+# identity (machine-id, host keys, cloud-init state) that would otherwise be
+# cloned into every instance launched from this AMI.
+- name: Devstation AMI
+  hosts: all
+  become: true
+  gather_facts: true
+  roles:
+    - common
+    - cleanup

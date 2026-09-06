@@ -1,0 +1,25 @@
+#!/bin/sh
+# Compact login banner. Replaces Ubuntu's stock multi-screen MOTD (welcome
+# header, sysinfo table, update counts, ESM ads) with the handful of facts
+# that actually matter when you're SSH'd into several boxes at once.
+
+C='\033[36m'  # accent
+B='\033[1m'   # bold
+D='\033[2m'   # dim
+R='\033[0m'   # reset
+
+host=$(hostname -s)
+addr=$(hostname -I 2>/dev/null | awk '{print $1}')
+up=$(uptime -p 2>/dev/null | sed 's/^up //')
+load=$(cut -d' ' -f1 /proc/loadavg)
+disk=$(df -h / | awk 'NR==2 {print $3" / "$2" ("$5")"}')
+mem=$(free -h | awk '/^Mem:/ {print $3" / "$2}')
+os=$(. /etc/os-release && echo "$VERSION_ID")
+
+printf "\n"
+printf "  ${C}${B}devstation${R} ${D}·${R} ${B}%s${R}\n" "$host"
+printf "  ${D}--------------------------------------------------${R}\n"
+printf "  ${D}address${R}  %-22s ${D}uptime${R}  %s\n" "${addr:-n/a}" "${up:-n/a}"
+printf "  ${D}memory ${R}  %-22s ${D}load${R}    %s\n" "$mem" "$load"
+printf "  ${D}disk   ${R}  %-22s ${D}ubuntu${R}  %s\n" "$disk" "$os"
+printf "\n"
