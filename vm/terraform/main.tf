@@ -141,3 +141,13 @@ resource "aws_instance" "node" {
     ManagedBy = "terraform"
   }
 }
+
+// Stopping is not destroying: the instance, its ENI and its root volume all
+// survive, so the private IP holds and only the compute charge goes away. The
+// public IP does not survive, which is why `make ip` refreshes before printing.
+resource "aws_ec2_instance_state" "node" {
+  count = var.node_count
+
+  instance_id = aws_instance.node[count.index].id
+  state       = contains(var.stopped_nodes, count.index) ? "stopped" : "running"
+}

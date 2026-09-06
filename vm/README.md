@@ -27,7 +27,7 @@ Run everything from **WSL Ubuntu-24.04**. Ansible has no native Windows build an
 
 ```bash
 # inside WSL, the toolchain
-packer version && terraform version && aws --version && ansible --version && make -v
+packer version && terraform version && aws --version && ansible --version && just --version
 # install whatever is missing, then authenticate
 aws configure     # or: aws configure sso
 ```
@@ -35,23 +35,39 @@ aws configure     # or: aws configure sso
 ## Use
 
 ```bash
-make ami                                 # ~5 min, once
+just ami                                 # ~5 min, once
 cp vm/terraform/terraform.tfvars{.example,}
-make myip                                # paste the result into allowed_cidr
-make up                                  # ~40 s
-make ip
+just myip                                # paste the result into allowed_cidr
+just up                                  # ~40 s
+just ip
 ssh -i ~/.ssh/devstation.pem ubuntu@<ip>
-make down
+just down
 ```
 
-`make ami` is only needed when the image contents change. Day to day it's `make up` / `make down`.
+`just` with no arguments lists every recipe. `just ami` is only needed when the image contents change. Day to day it's `just up` / `just down`.
+
+### Pausing without destroying
+
+`just down` terminates everything: the disks go too, and the next `just up` is a blank box. To keep your work but stop paying for compute, stop the nodes instead.
+
+```bash
+just stop 1 2   # or a single node
+just ip         # dev-0 -> 13.51.x.x, dev-1 -> stopped
+just start 1    # prints the new IP when it's back
+```
+
+Nodes are named by index, the `N` in `dev-N`. The state lives in `vm/terraform/stopped.auto.tfvars`, which Terraform auto-loads, so a stopped node stays stopped across `just up` and across reboots of your own machine.
+
+- **A stopped node still bills for its EBS root volume**, roughly $2.40/month per 30 GB in `eu-north-1`. Only the instance-hour charge goes away.
+- The **public IP changes** on every start, since there is no Elastic IP. `just ip` refreshes Terraform's state before printing, so it is never stale. An EIP would pin the address but costs ~$3.65/month per node while stopped, which is more than the disk.
+- The **private IP does not change**. It lives on the ENI, which stays attached, so anything the nodes use to reach each other survives a stop.
 
 ### The key
 
 Terraform generates an ED25519 keypair and writes `~/.ssh/devstation.pem` at mode `0400`, ready to use with no copying or `chmod`. It goes to your home directory rather than the repo because Windows drives mount `0777` under WSL, and OpenSSH refuses a key that loose.
 
 - The private key is also stored **in plaintext in `terraform.tfstate`**, which is gitignored. Treat the state file as a secret.
-- `make down` deletes the key, since Terraform manages the file. A later `make up` generates a **new** one, so any copy you kept stops working.
+- `just down` deletes the key, since Terraform manages the file. A later `just up` generates a **new** one, so any copy you kept stops working.
 
 ## Networking
 
