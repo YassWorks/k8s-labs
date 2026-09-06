@@ -1,0 +1,19 @@
+*.pem
+
+# --- terraform ---
+**/.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+*.tfvars
+!*.tfvars.example
+
+# --- packer ---
+vm/packer/manifest*.json
+
+# --- editors ---
+.vscode/
+.idea/
+
+.claude
