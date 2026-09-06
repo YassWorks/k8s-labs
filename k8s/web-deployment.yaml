@@ -1,9 +1,11 @@
 apiVersion: apps/v1
 kind: Deployment
+
 metadata:
   labels:
     app: synergychat-web
   name: synergychat-web
+
 spec:
   replicas: 3
   selector:
