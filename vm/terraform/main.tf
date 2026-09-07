@@ -109,12 +109,17 @@ resource "aws_vpc_security_group_egress_rule" "all" {
 resource "aws_instance" "node" {
   count = var.node_count
 
-  ami                         = data.aws_ami.devstation.id
-  instance_type               = var.instance_type
-  subnet_id                   = local.subnet_id
-  vpc_security_group_ids      = [aws_security_group.devstation.id]
-  key_name                    = aws_key_pair.devstation.key_name
-  associate_public_ip_address = true
+  ami                    = data.aws_ami.devstation.id
+  instance_type          = var.instance_type
+  subnet_id              = local.subnet_id
+  vpc_security_group_ids = [aws_security_group.devstation.id]
+  key_name               = aws_key_pair.devstation.key_name
+
+  // associate_public_ip_address is deliberately unset. It is ForceNew, and the
+  // provider reads it back from the ENI's association, which AWS releases while
+  // an instance is stopped. Setting it true means every stopped node plans as a
+  // replacement, terminating it and deleting its root volume. Default VPC
+  // subnets have map_public_ip_on_launch, so nodes still get a public IP.
 
   root_block_device {
     volume_size           = var.volume_size

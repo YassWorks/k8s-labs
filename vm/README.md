@@ -61,6 +61,7 @@ Nodes are named by index, the `N` in `dev-N`. The state lives in `vm/terraform/s
 - **A stopped node still bills for its EBS root volume**, roughly $2.40/month per 30 GB in `eu-north-1`. Only the instance-hour charge goes away.
 - The **public IP changes** on every start, since there is no Elastic IP. `just ip` refreshes Terraform's state before printing, so it is never stale. An EIP would pin the address but costs ~$3.65/month per node while stopped, which is more than the disk.
 - The **private IP does not change**. It lives on the ENI, which stays attached, so anything the nodes use to reach each other survives a stop.
+- `stop` and `start` plan first and **refuse to apply if the plan would destroy or replace anything**. A lifecycle command must never terminate a node, because `delete_on_termination` would take the root volume with it. If you hit that refusal, run `terraform plan` in `vm/terraform` and find out what drifted before forcing anything.
 
 ### The key
 

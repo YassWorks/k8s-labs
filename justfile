@@ -25,7 +25,7 @@ stop +nodes:
     set -eu
     just _check {{nodes}}
     echo "stopped_nodes = [$(echo $(just _stopped) {{nodes}} | tr ' ' '\n' | grep -v '^$' | sort -nu | paste -sd, -)]" > {{state_file}}
-    cd {{tf_dir}} && terraform apply -auto-approve
+    just _apply
     just ip
 
 # bring stopped nodes back: `just start 1`
@@ -35,7 +35,7 @@ start +nodes:
     just _check {{nodes}}
     keep=$(echo $(just _stopped) | tr ' ' '\n' | grep -vxF -f <(echo {{nodes}} | tr ' ' '\n') || true)
     echo "stopped_nodes = [$(echo $keep | tr ' ' '\n' | grep -v '^$' | sort -nu | paste -sd, -)]" > {{state_file}}
-    cd {{tf_dir}} && terraform apply -auto-approve
+    just _apply
     just ip
 
 # print node name -> public IP, or 'stopped'
@@ -55,6 +55,23 @@ fmt:
 [private]
 _stopped:
     @sed -n 's/^stopped_nodes *= *\[\(.*\)\]/\1/p' {{state_file}} 2>/dev/null | tr ',' ' '
+
+# Applies the current config, but refuses if the plan would destroy anything.
+# stop and start are lifecycle operations: no node should ever be replaced by
+# one, and a silent replacement takes the root volume with it.
+[private]
+_apply:
+    #!/usr/bin/env bash
+    set -eu
+    cd {{tf_dir}}
+    trap 'rm -f .tfplan' EXIT
+    terraform plan -input=false -out=.tfplan >/dev/null
+    if terraform show -json .tfplan | grep -qE '"actions": *\[[^]]*"delete"'; then
+        echo "refusing to apply: this plan destroys or replaces a resource." >&2
+        echo "inspect it with: cd {{tf_dir}} && terraform plan" >&2
+        exit 1
+    fi
+    terraform apply -input=false .tfplan
 
 # Fails unless every argument is an index of a node that actually exists.
 [private]
