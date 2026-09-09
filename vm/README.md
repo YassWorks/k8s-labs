@@ -27,7 +27,7 @@ Run everything from **WSL Ubuntu-24.04**. Ansible has no native Windows build an
 
 ```bash
 # inside WSL, the toolchain
-packer version && terraform version && aws --version && ansible --version && just --version
+packer version && terraform version && aws --version && ansible --version && just --version && jq --version
 # install whatever is missing, then authenticate
 aws configure     # or: aws configure sso
 ```
@@ -45,6 +45,21 @@ just down
 ```
 
 `just` with no arguments lists every recipe. `just ami` is only needed when the image contents change. Day to day it's `just up` / `just down`.
+
+### VSCode on a node
+
+`just code 0` opens VSCode attached to `dev-0` over Remote-SSH, with `/home/ubuntu` as the folder. It refuses an index that does not exist and refuses a node that is stopped, telling you which `just start` would bring it back.
+
+**Nothing about this is baked into the AMI.** The `ms-vscode-remote.remote-ssh` extension on your desktop pushes its own headless server to `~/.vscode-server` on the node the first time you connect, then reuses it. First connect costs ~30 s; after that it is instant.
+
+The recipe has to reach across the WSL boundary to work, which is the only surprising part:
+
+- `code` inside WSL is not a Linux build. It is `/mnt/c/.../Microsoft VS Code/bin/code`, the Windows CLI, so Remote-SSH runs in the Windows process and reads `%USERPROFILE%\.ssh\config`, not WSL's.
+- So `just code` writes `%USERPROFILE%\.ssh\devstation.config`, one `Host dev-N` block per running node, regenerated on every run. Your own config gets a single `Include devstation.config` line prepended once and is never touched again.
+- It also copies the pem there. Referencing the WSL copy in place does not work: Windows OpenSSH reads anything on the WSL mount as world-readable and refuses it with `UNPROTECTED PRIVATE KEY FILE`. Same 0777 problem as [the key](#the-key), from the other direction.
+- The generated blocks set `StrictHostKeyChecking no` and `UserKnownHostsFile NUL`. Host keys are deliberately thrown away, because a rebuilt node reuses an address with a new key and would otherwise fail as a host identification change.
+
+Both files are derived, so deleting them is always safe: the next `just code` writes them again.
 
 ### Pausing without destroying
 

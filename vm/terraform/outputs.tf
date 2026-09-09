@@ -16,6 +16,11 @@ output "node_count" {
   value       = var.node_count
 }
 
+output "node_prefix" {
+  description = "Name prefix, so tooling can turn an index back into a node name."
+  value       = var.node_prefix
+}
+
 output "pem" {
   description = "Path to the generated private key."
   value       = local_sensitive_file.pem.filename
